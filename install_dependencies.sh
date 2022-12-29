@@ -3,8 +3,8 @@
 sudo apt -y update \
     && apt install -y \ 
        ccache \
-       clang-tidy \
+       clang-tidy=12 \
        cppcheck \
-       iwyu \
        graphviz \
        doxygen \
+       libeigen3-dev
