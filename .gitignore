@@ -2,6 +2,8 @@
 build/
 out/
 cmake-build-*/
+bin/
+lib/
 
 # IDE files
 .vs/

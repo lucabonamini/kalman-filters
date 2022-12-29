@@ -1,6 +1,6 @@
-icmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.15)
 
-project(template_repository)
+project(kalman-filters)
 include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
 
@@ -24,12 +24,4 @@ include(cmake/StaticAnalyzers.cmake)
 
 option(BUILD_SHARED_LIBS "Enable compilation of shared libraries" OFF)
 
-function(build_executable name)
-  add_executable(${name} src/${name}.cpp)
-  target_include_directories(${name}
-    PRIVATE
-      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-      $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include>
-  )
-  target_compile_features(${name} PRIVATE cxx_std_17)
-endfunction()
+add_subdirectory(ekf)
