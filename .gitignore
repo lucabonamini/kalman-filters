@@ -4,6 +4,7 @@ out/
 cmake-build-*/
 bin/
 lib/
+*.csv
 
 # IDE files
 .vs/

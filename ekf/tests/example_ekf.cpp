@@ -7,12 +7,14 @@
 #include <chrono>
 #include <random>
 #include <vector>
+#include <sys/time.h>
+#include <fstream>
+#include <filesystem>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/opencv.hpp>
 
-#include <sys/time.h>
 
 typedef double T;
 
@@ -68,11 +70,17 @@ int main(int argc, char** argv)
     ekf.init(x);
     
     // Standard-Deviation of noise added to all state vector components during state transition
-    T systemNoise = 0.01;
+    T systemNoise = 0.1;
     // Standard-Deviation of noise added to all measurement vector components in orientation measurements
     T orientationNoise = 0.001;
     // Standard-Deviation of noise added to all measurement vector components in distance measurements
     T distanceNoise = 0.025;
+
+    auto output_file = "../ekf/tests/data.csv";
+    if (std::filesystem::exists(output_file)) {
+        std::filesystem::remove(output_file);
+    }
+    std::ofstream f{output_file};
     
     // Simulate for 100 steps
     const size_t N = 100;
@@ -121,9 +129,9 @@ int main(int argc, char** argv)
             viz_ekf.push_back(x_ekf);
         }
         
-        // Print to stdout as csv format
-        // std::cout   << x.x() << "," << x.y() << "," << x.theta() << ","
-                    // << x_ekf.x() << "," << x_ekf.y() << "," << x_ekf.theta() << std::endl;
+        // Save csv
+        f << x_truth.x() << "," << x_truth.y() << "," << x_truth.theta() << ","
+          << x_ekf.x() << "," << x_ekf.y() << "," << x_ekf.theta() << std::endl;
 
         // Visualization
         cv::Mat bg(6000, 6000, CV_8UC3, cv::Scalar(255, 255, 255));
@@ -157,6 +165,7 @@ int main(int argc, char** argv)
         cv::imshow("ekf", outImg);
         cv::waitKey(5);
     }
+    f.close();
     
     return 0;
 }
