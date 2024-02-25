@@ -11,11 +11,6 @@
 #include <fstream>
 #include <filesystem>
 
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/opencv.hpp>
-
-
 typedef double T;
 
 // Some type shortcuts
@@ -28,16 +23,19 @@ typedef example::OrientationMeasurement<T> OrientationMeasurement;
 typedef example::PositionMeasurementModel<State, PositionMeasurement> PositionModel;
 typedef example::OrientationMeasurementModel<State, OrientationMeasurement> OrientationModel;
 
-cv::Point2i cv_offset(double x, double y, int image_width = 2000, int image_height = 2000) {
-  cv::Point2i output;
-  output.x = int(x * 100) + image_width / 2;
-  output.y = image_height - int(y * 100) - image_height / 1 + 70;
-  return output;
+void saveData(const std::vector<State>& viz_x, const std::vector<State>& viz_ekf, const char* output_file) {
+    std::ofstream f{output_file};
+    f << "x_truth_x,x_truth_y,x_truth_theta,x_ekf_x,x_ekf_y,x_ekf_theta\n";  // Header
+
+    for (size_t i = 0; i < viz_x.size(); i++) {
+        f << viz_x[i].x() << "," << viz_x[i].y() << "," << viz_x[i].theta() << ","
+          << viz_ekf[i].x() << "," << viz_ekf[i].y() << "," << viz_ekf[i].theta() << std::endl;
+    }
+
+    f.close();
 }
 
-int main(int argc, char** argv)
-{
-    // Simulated (true) system state
+int main(int argc, char** argv) {
     State x;
     x.setZero();
 
@@ -46,126 +44,58 @@ int main(int argc, char** argv)
 
     std::vector<State> viz_x;
     std::vector<State> viz_ekf;
-    
-    // Control input
+
     Control u;
     Control u_truth;
-    // System
     SystemModel sys;
-    
-    // Measurement models
-    // Set position landmarks at (-1, -1) and (10, 15)
+
     PositionModel pm(-1, -1, 10, 15);
     OrientationModel om;
-    
-    // Random number generation (for noise simulation)
+
     std::default_random_engine generator;
-    generator.seed( std::chrono::system_clock::now().time_since_epoch().count() );
+    generator.seed(std::chrono::system_clock::now().time_since_epoch().count());
     std::normal_distribution<T> noise(0, 1);
-    
-    // Extended Kalman Filter
+
     filters::ExtendedKalmanFilter<State> ekf;
-    
-    // Init filters with true system state
     ekf.init(x);
-    
-    // Standard-Deviation of noise added to all state vector components during state transition
+
     T systemNoise = 0.1;
-    // Standard-Deviation of noise added to all measurement vector components in orientation measurements
     T orientationNoise = 0.001;
-    // Standard-Deviation of noise added to all measurement vector components in distance measurements
     T distanceNoise = 0.025;
 
-    auto output_file = "../ekf/tests/data.csv";
+    const size_t N = 100;
+
+    const char* output_file = "../ekf/tests/data.csv";
     if (std::filesystem::exists(output_file)) {
         std::filesystem::remove(output_file);
     }
-    std::ofstream f{output_file};
-    
-    // Simulate for 100 steps
-    const size_t N = 100;
-    for(auto i = 1; i <= N; i++)
-    {
-        // Generate some control input
-        u_truth.v() = .8 - std::sin( T(2) * T(M_PI) / T(N) );
-        u_truth.dtheta() = -std::sin( T(2) * T(M_PI) / T(N) ) * (1 - 2*(i > 50));
 
-        // Simulate system
+    for (auto i = 1; i <= N; i++) {
+        u_truth.v() = 0.8 - std::sin(T(2) * T(M_PI) / T(N));
+        u_truth.dtheta() = -std::sin(T(2) * T(M_PI) / T(N)) * (1 - 2 * (i > 50));
+
         x_truth = sys.f(x_truth, u_truth);
-
         viz_x.push_back(x_truth);
 
-        u.v() = u_truth.v() + systemNoise*noise(generator);
-        u.dtheta() = u_truth.dtheta() + systemNoise*noise(generator);
+        u.v() = u_truth.v() + systemNoise * noise(generator);
+        u.dtheta() = u_truth.dtheta() + systemNoise * noise(generator);
 
-        x = sys.f(x,u);
-                
-        // Predict state for current time-step using the filters
+        x = sys.f(x, u);
+
         auto x_ekf = ekf.predict(sys, u);
-        
-        // Orientation measurement
-        {
-            // We can measure the orientation every 5th step
-            OrientationMeasurement orientation = om.h(x);
-            
-            // Measurement is affected by noise as well
-            orientation.theta() += orientationNoise * noise(generator);
-            
-            // Update EKF
-            x_ekf = ekf.update(om, orientation);
-        }
-        
-        // Position measurement
-        {
-            // We can measure the position every 10th step
-            PositionMeasurement position = pm.h(x);
-            
-            // Measurement is affected by noise as well
-            position.d1() += distanceNoise * noise(generator);
-            position.d2() += distanceNoise * noise(generator);
-            
-            // Update EKF
-            x_ekf = ekf.update(pm, position);
-            viz_ekf.push_back(x_ekf);
-        }
-        
-        // Save csv
-        f << x_truth.x() << "," << x_truth.y() << "," << x_truth.theta() << ","
-          << x_ekf.x() << "," << x_ekf.y() << "," << x_ekf.theta() << std::endl;
 
-        // Visualization
-        cv::Mat bg(6000, 6000, CV_8UC3, cv::Scalar(255, 255, 255));
-        for (size_t i = 0; i < viz_x.size(); i++) {
-            cv::circle(bg,
-                        cv_offset(viz_x.at(i).x(), viz_x.at(i).y(), bg.cols, bg.rows),
-                        20,
-                        cv::Scalar(0, 255, 0),
-                        -1);
-        }
-        cv::circle(bg,
-            cv_offset(viz_x.back().x(), viz_x.back().y(), bg.cols, bg.rows),
-            30,
-            cv::Scalar(0, 0, 255),
-            -1);
-        for (size_t i = 0; i < viz_ekf.size(); i++) {
-            cv::circle(bg,
-                        cv_offset(viz_ekf.at(i).x(), viz_ekf.at(i).y(), bg.cols, bg.rows),
-                        20,
-                        cv::Scalar(255, 0, 0),
-                        -1);
-        }
-        cv::circle(bg,
-            cv_offset(viz_ekf.back().x(), viz_ekf.back().y(), bg.cols, bg.rows),
-            30,
-            cv::Scalar(0, 255, 255),
-            -1);
+        OrientationMeasurement orientation = om.h(x);
+        orientation.theta() += orientationNoise * noise(generator);
+        x_ekf = ekf.update(om, orientation);
 
-        decltype(bg) outImg;
-        cv::resize(bg, outImg, cv::Size(), 0.2, 0.2);
-        cv::imshow("ekf", outImg);
-        cv::waitKey(5);
+        PositionMeasurement position = pm.h(x);
+        position.d1() += distanceNoise * noise(generator);
+        position.d2() += distanceNoise * noise(generator);
+        x_ekf = ekf.update(pm, position);
+        viz_ekf.push_back(x_ekf);
     }
-    f.close();
-    
+
+    saveData(viz_x, viz_ekf, output_file);
+
     return 0;
 }
